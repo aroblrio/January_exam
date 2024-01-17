@@ -1,0 +1,156 @@
+import PySimpleGUI as sg
+import math
+import json
+import matplotlib.pyplot as plt
+import numpy as np
+
+def calculate_max_distance(initial_velocity, launch_angle):
+    g = 9.8  # acceleration due to gravity
+
+    # Convert angle to radians
+    theta = math.radians(launch_angle)
+
+    # Calculate maximum distance using the projectile motion formula
+    max_distance = (initial_velocity ** 2 * math.sin(2 * theta)) / g
+
+    return max_distance
+
+
+def plot_trajectory_and_check_time(initial_velocities, launch_angles, threshold_time=3):
+    g = 9.8  # acceleration due to gravity
+
+    # Create a figure and axis
+    fig, ax = plt.subplots()
+
+    max_height_trajectory = None
+    max_height = 0
+
+    for velocity, angle in zip(initial_velocities, launch_angles):
+        # Convert angle to radians
+        theta = math.radians(angle)
+
+        # Time of flight
+        time_of_flight = (2 * velocity * math.sin(theta)) / g
+
+        # Calculate the x and y positions for each time value
+        time_values = np.linspace(0, time_of_flight, num=1000)
+        x_positions = velocity * np.cos(theta) * time_values
+        y_positions = velocity * np.sin(theta) * time_values - (0.5 * g * np.square(time_values))
+
+        # Check if time of flight is greater than the threshold
+        if time_of_flight > threshold_time:
+            # Plot the trajectory
+            ax.plot(x_positions, y_positions, label=f'V={velocity}, Angle={angle}')
+
+        # Update maximum height trajectory
+        if max(y_positions) > max_height:
+            max_height = max(y_positions)
+            max_height_trajectory = (velocity, angle)
+
+    ax.set_xlabel('Horizontal Distance (m)')
+    ax.set_ylabel('Vertical Distance (m)')
+    ax.set_title('Projectile Motion Trajectories that last over 3 seconds')
+    ax.legend()
+    plt.show()
+
+    return max_height_trajectory
+def calculate_trajectory_at_time(initial_velocities, launch_angles, analysis_time):
+    g = 9.8  # acceleration due to gravity
+
+    positions = []
+
+    for velocity, angle in zip(initial_velocities, launch_angles):
+        # Convert angle to radians
+        theta = math.radians(angle)
+
+        # Calculate the x and y positions for the specified time
+        time_of_flight = (2 * velocity * math.sin(theta)) / g
+        if analysis_time <= time_of_flight:
+            x_position = velocity * np.cos(theta) * analysis_time
+            y_position = velocity * np.sin(theta) * analysis_time - (0.5 * g * np.square(analysis_time))
+        else:
+            x_position, y_position = None, None  # Object has already landed
+
+        positions.append({'Velocity': velocity, 'Angle': angle, 'X_Position': x_position, 'Y_Position': y_position})
+
+    return positions
+
+
+
+# GUI Layout
+layout = [
+    [sg.Text('JSON File:'), sg.InputText(key='file_path'), sg.FileBrowse()],
+    [sg.Button('Import Data')],
+    [sg.Table(values=[], headings=['Initial Velocity', 'Launch Angle', 'Max Distance'], auto_size_columns=False, justification='right', key='table')],
+    [sg.Button('Calculate Max Distance'), sg.Button('Plot Trajectory'),sg.Button('Trayectory Analysis'), sg.Button('Exit')],
+]
+
+window = sg.Window('Projectile Motion Calculator', layout)
+
+while True:
+    event, values = window.read()
+
+    if event == sg.WIN_CLOSED or event == 'Exit':
+        break
+    elif event == 'Import Data':
+        try:
+            file_path = values['file_path']
+            with open(file_path, 'r') as file:
+                data = json.load(file)
+            
+            # Format data for the table
+            table_data = [[row['InitialVelocity'], row['LaunchAngle'], ''] for row in data]
+            
+            window['table'].update(values=table_data)
+        except Exception as e:
+            sg.popup_error(f'Error importing data: {str(e)}')
+
+    # ...
+
+    elif event == 'Calculate Max Distance':
+        try:
+            table_data = window['table'].get()
+            for i, row in enumerate(data):
+                velocity = float(row['InitialVelocity'])
+                angle = float(row['LaunchAngle'])
+                max_distance = calculate_max_distance(velocity, angle)
+            # Update the table with the calculated max distance
+                table_data[i][2] = f'{max_distance:.2f}'
+            window['table'].update(values=table_data)
+        except ValueError:
+            sg.popup_error('Please enter valid numeric values for velocity and angle.')
+
+
+    elif event == 'Plot Trajectory':
+        try:
+            velocities = [float(row['InitialVelocity']) for row in data]
+            angles = [float(row['LaunchAngle']) for row in data]
+            max_height_trajectory = plot_trajectory_and_check_time(velocities, angles)
+            if max_height_trajectory:
+                sg.popup(f'Trajectory with Maximum Height:\nVelocity={max_height_trajectory[0]}, Angle={max_height_trajectory[1]}')
+        except ValueError:
+            sg.popup_error('Please enter valid numeric values for velocity and angle.')
+    elif event == 'Trajectory Analysis':
+        try:
+            time_input = sg.popup_get_text('Enter analysis time (seconds):', 'Trajectory Analysis')
+            if time_input:
+                analysis_time = float(time_input)
+                if analysis_time < 0:
+                    raise ValueError("Time must be a non-negative number.")
+            
+                positions = calculate_trajectory_at_time(velocities, angles, analysis_time)
+
+            # Save positions to a JSON file
+                json_filename = 'trajectory_analysis.json'
+                with open(json_filename, 'w') as json_file:
+                    json.dump(positions, json_file, indent=2)
+
+                sg.popup(f'Trajectory analysis saved to {json_filename}')
+        except ValueError as e:
+            sg.popup_error(f'Error in trajectory analysis: {str(e)}')
+    
+
+
+
+
+window.close()
